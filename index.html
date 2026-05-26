@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Inventory Scanner</title>
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --card2: #1f2937;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --border: rgba(255,255,255,.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, #1e293b, var(--bg));
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .app { max-width: 960px; margin: 0 auto; }
+    .hero { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    h1 { font-size: 1.65rem; margin: 0; letter-spacing: -.02em; }
+    .pill { color: var(--good); border: 1px solid rgba(34,197,94,.35); padding: 7px 10px; border-radius: 999px; font-size: .8rem; white-space: nowrap; }
+    .grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 14px; }
+    @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: rgba(17,24,39,.86); border: 1px solid var(--border); border-radius: 22px; padding: 14px; box-shadow: 0 16px 45px rgba(0,0,0,.25); backdrop-filter: blur(10px); }
+    .cameraWrap { position: relative; overflow: hidden; border-radius: 18px; background: #000; border: 1px solid var(--border); }
+    video { width: 100%; min-height: 280px; max-height: 520px; object-fit: cover; display: block; }
+    .scanLine { position: absolute; left: 9%; right: 9%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 18px var(--accent); opacity: .85; }
+    .status { min-height: 24px; color: var(--muted); font-size: .92rem; margin: 10px 2px; }
+    .status.good { color: var(--good); }
+    .status.warn { color: var(--warn); }
+    button, .fileButton {
+      border: 0;
+      border-radius: 16px;
+      padding: 13px 14px;
+      font-weight: 700;
+      font-size: 1rem;
+      color: #03111f;
+      background: linear-gradient(135deg, #7dd3fc, #38bdf8);
+      width: 100%;
+      cursor: pointer;
+      box-shadow: 0 10px 22px rgba(56,189,248,.22);
+    }
+    button.secondary, .fileButton { background: var(--card2); color: var(--text); box-shadow: none; border: 1px solid var(--border); }
+    button.danger { background: rgba(239,68,68,.14); color: #fecaca; border: 1px solid rgba(239,68,68,.35); box-shadow: none; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px) { .row, .row3 { grid-template-columns: 1fr; } }
+    label { color: var(--muted); font-size: .82rem; display:block; margin: 10px 0 6px; }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(15,23,42,.75);
+      color: var(--text);
+      font-size: 1rem;
+    }
+    input[type=file] { display: none; }
+    .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+    @media (max-width: 620px) { .actions { grid-template-columns: 1fr; } }
+    .inventoryHeader { display:flex; justify-content:space-between; align-items:center; gap: 8px; margin: 15px 0 8px; }
+    .count { color: var(--muted); font-size: .9rem; }
+    .item { display: grid; grid-template-columns: 56px 1fr auto; gap: 10px; align-items: center; border: 1px solid var(--border); background: rgba(31,41,55,.55); padding: 10px; border-radius: 16px; margin-bottom: 8px; }
+    .thumb { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; background: #0b1220; border: 1px solid var(--border); display:flex; align-items:center; justify-content:center; color: var(--muted); font-size:.75rem; }
+    .itemName { font-weight: 750; }
+    .itemMeta { color: var(--muted); font-size: .82rem; margin-top: 3px; word-break: break-word; }
+    .qty { font-size: 1.25rem; font-weight: 800; text-align: right; }
+    .miniActions { display:flex; gap:6px; margin-top:6px; }
+    .miniActions button { padding: 7px 10px; font-size:.85rem; border-radius: 10px; width: auto; }
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #020617; border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 999px; box-shadow: 0 12px 35px rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .22s, bottom .22s; z-index: 20; }
+    .toast.show { opacity: 1; bottom: 34px; }
+    .hint { color: var(--muted); font-size: .85rem; line-height:1.35; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="hero">
+      <div>
+        <h1>Inventory Scanner</h1>
+        <div class="hint">Scan barcodes, import CSV lists, and auto-fill item details when available.</div>
+      </div>
+      <div class="pill" id="cameraPill">Camera loading</div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <div class="cameraWrap">
+          <video id="video" muted playsinline></video>
+          <div class="scanLine"></div>
+        </div>
+        <div id="scanStatus" class="status">Camera will start automatically. Tap Scan Barcode when ready.</div>
+        <button id="scanButton">Scan Barcode</button>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <div>
+            <label>Barcode</label>
+            <input id="barcode" placeholder="Scan or type barcode" />
+          </div>
+          <div>
+            <label>Quantity</label>
+            <input id="quantity" type="number" min="0" value="1" />
+          </div>
+        </div>
+        <label>Item name</label>
+        <input id="name" placeholder="Auto-filled when available" />
+        <div class="row">
+          <div>
+            <label>Brand</label>
+            <input id="brand" placeholder="Brand" />
+          </div>
+          <div>
+            <label>Category</label>
+            <input id="category" placeholder="Category" />
+          </div>
+        </div>
+        <label>Image URL</label>
+        <input id="image" placeholder="Optional product image URL" />
+        <div class="actions">
+          <button onclick="saveItem()">Save Item</button>
+          <button class="secondary" onclick="lookupCurrentBarcode()">Lookup Barcode</button>
+          <button class="secondary" onclick="clearForm()">Clear</button>
+        </div>
+        <p class="hint">Lookup searches public barcode/product databases. Some barcodes may not have available internet data.</p>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="row3">
+        <div>
+          <label>Search inventory</label>
+          <input id="search" placeholder="Search name, barcode, brand, category" oninput="renderInventory()" />
+        </div>
+        <div>
+          <label>CSV Import</label>
+          <label class="fileButton" for="csvFile">Import CSV</label>
+          <input id="csvFile" type="file" accept=".csv,text/csv" onchange="importCSV(event)" />
+        </div>
+        <div>
+          <label>CSV Export</label>
+          <button class="secondary" onclick="exportCSV()">Export CSV</button>
+        </div>
+      </div>
+      <div class="inventoryHeader">
+        <h2 style="margin:0;font-size:1.2rem;">Inventory</h2>
+        <div id="count" class="count"></div>
+      </div>
+      <div id="inventoryList"></div>
+    </section>
+  </div>
+  <div id="toast" class="toast"></div>
+
+<script>
+let inventory = JSON.parse(localStorage.getItem('inventory_v3')) || {};
+let codeReader = null;
+let scanningArmed = false;
+let lastScan = '';
+let lastScanAt = 0;
+let audioCtx = null;
+
+const fields = ['barcode','name','quantity','brand','category','image'];
+const $ = id => document.getElementById(id);
+
+function vibrate(pattern=[60]) { if (navigator.vibrate) navigator.vibrate(pattern); }
+function beep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.frequency.value = 880; gain.gain.value = 0.045;
+    osc.start(); setTimeout(() => osc.stop(), 90);
+  } catch(e) {}
+}
+function toast(msg) {
+  $('toast').textContent = msg;
+  $('toast').classList.add('show');
+  setTimeout(() => $('toast').classList.remove('show'), 1600);
+}
+
+async function startCamera() {
+  try {
+    codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+    await codeReader.decodeFromVideoDevice(null, 'video', async (result, err) => {
+      if (!result || !scanningArmed) return;
+      const code = result.getText();
+      const now = Date.now();
+      if (code === lastScan && now - lastScanAt < 1800) return;
+      lastScan = code; lastScanAt = now; scanningArmed = false;
+      await handleScan(code);
+    });
+    $('cameraPill').textContent = 'Camera active';
+    $('scanStatus').textContent = 'Camera is active. Tap Scan Barcode to capture the next barcode.';
+  } catch (e) {
+    $('cameraPill').textContent = 'Camera unavailable';
+    $('scanStatus').textContent = 'Camera could not start. Check Safari camera permission and HTTPS.';
+    $('scanStatus').className = 'status warn';
+  }
+}
+
+$('scanButton').addEventListener('click', () => {
+  scanningArmed = true;
+  $('scanStatus').textContent = 'Ready — point camera at one barcode.';
+  $('scanStatus').className = 'status good';
+  vibrate([25]);
+});
+
+async function handleScan(code) {
+  vibrate([80]); beep();
+  $('barcode').value = code;
+  if (inventory[code]) {
+    inventory[code].quantity = Number(inventory[code].quantity || 0) + 1;
+    fillForm(code, inventory[code]);
+    saveStore(); renderInventory();
+    toast('Scanned: quantity increased');
+    $('scanStatus').textContent = `Scanned ${code}. Quantity increased. Tap Scan Barcode for the next item.`;
+    return;
+  }
+  $('quantity').value = 1;
+  $('scanStatus').textContent = `Scanned ${code}. Looking up item information...`;
+  const data = await lookupBarcode(code);
+  if (data) {
+    fillForm(code, {...data, quantity: 1});
+    saveItem(false);
+    toast('Item found and added');
+    $('scanStatus').textContent = `Found ${data.name || 'item'}. Tap Scan Barcode for the next item.`;
+  } else {
+    $('name').value = '';
+    toast('Barcode scanned');
+    $('scanStatus').textContent = `Barcode scanned. Add item name, then Save Item.`;
+  }
+}
+
+async function lookupBarcode(code) {
+  const clean = String(code || '').trim();
+  if (!clean) return null;
+
+  const sources = [
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(clean)}.json`,
+    `https://world.openbeautyfacts.org/api/v2/product/${encodeURIComponent(clean)}.json`,
+    `https://world.openproductsfacts.org/api/v2/product/${encodeURIComponent(clean)}.json`
+  ];
+
+  for (const url of sources) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json && json.status === 1 && json.product) {
+        const p = json.product;
+        return {
+          name: p.product_name || p.generic_name || p.abbreviated_product_name || '',
+          brand: p.brands || '',
+          category: p.categories || '',
+          image: p.image_front_url || p.image_url || '',
+          source: url.includes('openfoodfacts') ? 'Open Food Facts' : url.includes('openbeautyfacts') ? 'Open Beauty Facts' : 'Open Products Facts'
+        };
+      }
+    } catch(e) {}
+  }
+  return null;
+}
+
+async function lookupCurrentBarcode() {
+  const code = $('barcode').value.trim();
+  if (!code) { toast('Enter or scan a barcode first'); return; }
+  $('scanStatus').textContent = 'Looking up barcode information...';
+  const data = await lookupBarcode(code);
+  if (data) {
+    fillForm(code, {...data, quantity: Number($('quantity').value || 1)});
+    toast('Information found');
+  } else {
+    toast('No public information found');
+    $('scanStatus').textContent = 'No public information was found for that barcode.';
+  }
+}
+
+function fillForm(barcode, item) {
+  $('barcode').value = barcode;
+  $('name').value = item.name || '';
+  $('quantity').value = item.quantity ?? 1;
+  $('brand').value = item.brand || '';
+  $('category').value = item.category || '';
+  $('image').value = item.image || '';
+}
+
+function saveItem(showToast=true) {
+  const barcode = $('barcode').value.trim();
+  const name = $('name').value.trim() || 'Unnamed Item';
+  const quantity = Number($('quantity').value || 0);
+  if (!barcode) { toast('Barcode is required'); return; }
+  inventory[barcode] = {
+    name,
+    quantity,
+    brand: $('brand').value.trim(),
+    category: $('category').value.trim(),
+    image: $('image').value.trim(),
+    updatedAt: new Date().toISOString()
+  };
+  saveStore(); renderInventory();
+  if (showToast) toast('Item saved');
+}
+
+function clearForm() { fields.forEach(id => $(id).value = id === 'quantity' ? 1 : ''); }
+function saveStore() { localStorage.setItem('inventory_v3', JSON.stringify(inventory)); }
+
+function renderInventory() {
+  const q = $('search').value.toLowerCase().trim();
+  const entries = Object.entries(inventory).filter(([barcode, item]) => {
+    const hay = `${barcode} ${item.name||''} ${item.brand||''} ${item.category||''}`.toLowerCase();
+    return !q || hay.includes(q);
+  }).sort((a,b) => (a[1].name || '').localeCompare(b[1].name || ''));
+  $('count').textContent = `${entries.length} shown / ${Object.keys(inventory).length} total`;
+  $('inventoryList').innerHTML = entries.map(([barcode, item]) => `
+    <div class="item">
+      ${item.image ? `<img class="thumb" src="${escapeHtml(item.image)}" onerror="this.outerHTML='<div class=&quot;thumb&quot;>No img</div>'">` : `<div class="thumb">No img</div>`}
+      <div>
+        <div class="itemName">${escapeHtml(item.name || 'Unnamed Item')}</div>
+        <div class="itemMeta">${escapeHtml(item.brand || '')}${item.brand && item.category ? ' • ' : ''}${escapeHtml(item.category || '')}</div>
+        <div class="itemMeta">${escapeHtml(barcode)}</div>
+        <div class="miniActions">
+          <button class="secondary" onclick="adjustQty('${escapeJs(barcode)}', 1)">+1</button>
+          <button class="secondary" onclick="adjustQty('${escapeJs(barcode)}', -1)">-1</button>
+          <button class="secondary" onclick="editItem('${escapeJs(barcode)}')">Edit</button>
+          <button class="danger" onclick="deleteItem('${escapeJs(barcode)}')">Delete</button>
+        </div>
+      </div>
+      <div class="qty">${Number(item.quantity || 0)}</div>
+    </div>`).join('') || '<p class="hint">No inventory items yet.</p>';
+}
+
+function adjustQty(barcode, delta) {
+  if (!inventory[barcode]) return;
+  inventory[barcode].quantity = Math.max(0, Number(inventory[barcode].quantity || 0) + delta);
+  saveStore(); renderInventory();
+}
+function editItem(barcode) { if (inventory[barcode]) fillForm(barcode, inventory[barcode]); window.scrollTo({top:0, behavior:'smooth'}); }
+function deleteItem(barcode) { if (confirm('Delete this item?')) { delete inventory[barcode]; saveStore(); renderInventory(); } }
+
+function exportCSV() {
+  const header = ['barcode','name','quantity','brand','category','image'];
+  const rows = [header.join(',')];
+  Object.entries(inventory).forEach(([barcode, item]) => {
+    rows.push(header.map(h => csvCell(h === 'barcode' ? barcode : (item[h] ?? ''))).join(','));
+  });
+  const blob = new Blob([rows.join('\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'inventory.csv'; a.click();
+}
+function csvCell(v) { return '"' + String(v).replaceAll('"','""') + '"'; }
+
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i=0; i<text.length; i++) {
+    const c = text[i], n = text[i+1];
+    if (c === '"' && quoted && n === '"') { cell += '"'; i++; }
+    else if (c === '"') quoted = !quoted;
+    else if (c === ',' && !quoted) { row.push(cell); cell = ''; }
+    else if ((c === '\n' || c === '\r') && !quoted) {
+      if (cell || row.length) { row.push(cell); rows.push(row); row = []; cell = ''; }
+      if (c === '\r' && n === '\n') i++;
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+function importCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const rows = parseCSV(reader.result);
+    if (!rows.length) return;
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const idx = name => headers.indexOf(name);
+    let added = 0, updated = 0;
+    rows.slice(1).forEach(r => {
+      const barcode = (r[idx('barcode')] || r[0] || '').trim();
+      if (!barcode) return;
+      const existing = inventory[barcode];
+      inventory[barcode] = {
+        name: (r[idx('name')] || existing?.name || 'Unnamed Item').trim(),
+        quantity: Number(r[idx('quantity')] || existing?.quantity || 0),
+        brand: (r[idx('brand')] || existing?.brand || '').trim(),
+        category: (r[idx('category')] || existing?.category || '').trim(),
+        image: (r[idx('image')] || existing?.image || '').trim(),
+        updatedAt: new Date().toISOString()
+      };
+      existing ? updated++ : added++;
+    });
+    saveStore(); renderInventory(); toast(`CSV imported: ${added} added, ${updated} updated`);
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function escapeHtml(s) { return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escapeJs(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+startCamera(); renderInventory();
+</script>
+</body>
+</html>
