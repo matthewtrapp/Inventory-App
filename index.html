@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Barcode Inventory</title>
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --card2: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent2: #22c55e;
+      --danger: #ef4444;
+      --border: rgba(255,255,255,.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, #1e3a8a 0, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 14px;
+    }
+    .app { max-width: 780px; margin: 0 auto; }
+    h1 { font-size: 28px; margin: 8px 0 4px; }
+    .subtitle { color: var(--muted); margin: 0 0 16px; }
+    .card {
+      background: rgba(17, 24, 39, .86);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 14px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.28);
+      margin-bottom: 14px;
+      backdrop-filter: blur(12px);
+    }
+    .video-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: 18px;
+      background: #020617;
+      border: 1px solid var(--border);
+    }
+    video { width: 100%; display: block; min-height: 260px; object-fit: cover; }
+    .scan-frame {
+      position: absolute;
+      inset: 18%;
+      border: 3px solid rgba(56, 189, 248, .85);
+      border-radius: 18px;
+      box-shadow: 0 0 0 999px rgba(0,0,0,.26);
+      pointer-events: none;
+    }
+    .status {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      background: rgba(2, 6, 23, .82);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .scan-button {
+      width: 100%;
+      border: none;
+      border-radius: 18px;
+      padding: 18px 16px;
+      margin-top: 12px;
+      font-size: 20px;
+      font-weight: 800;
+      color: #082f49;
+      background: linear-gradient(135deg, #7dd3fc, #22c55e);
+      box-shadow: 0 10px 28px rgba(34,197,94,.26);
+      cursor: pointer;
+    }
+    .scan-button:active { transform: scale(.98); }
+    .scan-button.ready { animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.15)} }
+    .row { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    input, button.secondary {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      padding: 13px;
+      font-size: 16px;
+      background: rgba(15, 23, 42, .92);
+      color: var(--text);
+    }
+    label { display: block; color: var(--muted); font-size: 13px; margin: 8px 0 5px; }
+    .save {
+      background: var(--accent2);
+      color: #052e16;
+      border: none;
+      font-weight: 800;
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 16px;
+      margin-top: 10px;
+      width: 100%;
+    }
+    .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 12px; }
+    th, td { border-bottom: 1px solid var(--border); padding: 10px 6px; text-align: left; font-size: 14px; }
+    th { color: var(--muted); font-weight: 600; }
+    .delete { color: white; background: var(--danger); border: none; border-radius: 10px; padding: 8px; }
+    .small { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>Inventory Scanner</h1>
+    <p class="subtitle">Camera stays on. Tap the scan button each time you want to capture a barcode.</p>
+
+    <section class="card">
+      <div class="video-wrap">
+        <video id="video" playsinline muted></video>
+        <div class="scan-frame"></div>
+        <div class="status" id="status">Camera loading…</div>
+      </div>
+      <button id="scanButton" class="scan-button" onclick="armScanner()">Scan Barcode</button>
+      <p class="small">After a successful scan, your iPhone should vibrate. A short beep is used as backup.</p>
+    </section>
+
+    <section class="card">
+      <h2>Item Details</h2>
+      <label for="barcode">Barcode</label>
+      <input id="barcode" placeholder="Scan or type barcode" />
+      <label for="name">Item name</label>
+      <input id="name" placeholder="Item name" />
+      <label for="quantity">Quantity</label>
+      <input id="quantity" type="number" value="1" />
+      <button class="save" onclick="saveItem()">Save / Update Item</button>
+    </section>
+
+    <section class="card">
+      <h2>Inventory</h2>
+      <div class="toolbar">
+        <button class="secondary" onclick="exportCSV()">Export CSV</button>
+        <input type="file" accept=".csv" onchange="importCSV(event)" />
+      </div>
+      <table>
+        <thead><tr><th>Barcode</th><th>Name</th><th>Qty</th><th></th></tr></thead>
+        <tbody id="inventory"></tbody>
+      </table>
+    </section>
+  </div>
+
+<script>
+let inventory = JSON.parse(localStorage.getItem("inventory")) || {};
+let reader = null;
+let scanningAllowed = false;
+let lastCode = "";
+let lastScanTime = 0;
+
+const statusEl = document.getElementById("status");
+const scanButton = document.getElementById("scanButton");
+
+function setStatus(message) { statusEl.textContent = message; }
+
+function notifySuccess() {
+  if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 880;
+    gain.gain.value = 0.08;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    setTimeout(() => { osc.stop(); ctx.close(); }, 120);
+  } catch (e) {}
+}
+
+function armScanner() {
+  scanningAllowed = true;
+  scanButton.classList.add("ready");
+  scanButton.textContent = "Ready — Aim at Barcode";
+  setStatus("Ready to scan. Aim the barcode inside the frame.");
+}
+
+async function startCameraAlwaysOn() {
+  try {
+    reader = new ZXingBrowser.BrowserMultiFormatReader();
+    await reader.decodeFromVideoDevice(null, "video", (result, error) => {
+      if (!result || !scanningAllowed) return;
+
+      const code = result.getText();
+      const now = Date.now();
+      if (code === lastCode && now - lastScanTime < 2000) return;
+
+      lastCode = code;
+      lastScanTime = now;
+      scanningAllowed = false;
+      scanButton.classList.remove("ready");
+      scanButton.textContent = "Scan Barcode";
+
+      document.getElementById("barcode").value = code;
+      if (inventory[code]) {
+        document.getElementById("name").value = inventory[code].name;
+        document.getElementById("quantity").value = inventory[code].quantity + 1;
+        setStatus("Scanned existing item. Quantity increased by 1 in the form. Tap Save to update.");
+      } else {
+        document.getElementById("name").value = "";
+        document.getElementById("quantity").value = 1;
+        setStatus("Barcode scanned. Enter item name, then tap Save.");
+      }
+      notifySuccess();
+    });
+    setStatus("Camera is on. Tap Scan Barcode when ready.");
+  } catch (err) {
+    setStatus("Camera could not start. Make sure you are using HTTPS and allowed camera access.");
+    console.error(err);
+  }
+}
+
+function saveItem() {
+  const barcode = document.getElementById("barcode").value.trim();
+  const name = document.getElementById("name").value.trim();
+  const quantity = parseInt(document.getElementById("quantity").value, 10);
+
+  if (!barcode || !name || isNaN(quantity)) {
+    alert("Please enter barcode, name, and quantity.");
+    return;
+  }
+
+  inventory[barcode] = { name, quantity };
+  renderInventory();
+  setStatus("Item saved. Tap Scan Barcode for the next item.");
+
+  document.getElementById("barcode").value = "";
+  document.getElementById("name").value = "";
+  document.getElementById("quantity").value = 1;
+}
+
+function renderInventory() {
+  const tbody = document.getElementById("inventory");
+  tbody.innerHTML = "";
+  Object.entries(inventory).forEach(([barcode, item]) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${barcode}</td><td>${item.name}</td><td>${item.quantity}</td><td><button class="delete" onclick="deleteItem('${barcode}')">Delete</button></td>`;
+    tbody.appendChild(row);
+  });
+  localStorage.setItem("inventory", JSON.stringify(inventory));
+}
+
+function deleteItem(barcode) {
+  delete inventory[barcode];
+  renderInventory();
+}
+
+function exportCSV() {
+  let csv = "barcode,name,quantity\n";
+  Object.entries(inventory).forEach(([barcode, item]) => {
+    csv += `${barcode},"${String(item.name).replaceAll('"', '""')}",${item.quantity}\n`;
+  });
+  const blob = new Blob([csv], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "inventory.csv";
+  link.click();
+}
+
+function importCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const readerFile = new FileReader();
+  readerFile.onload = function(e) {
+    const rows = e.target.result.split(/\r?\n/).slice(1);
+    rows.forEach(row => {
+      if (!row.trim()) return;
+      const match = row.match(/^([^,]+),"?(.*?)"?,([^,]+)$/);
+      if (match) {
+        inventory[match[1].trim()] = {
+          name: match[2].replaceAll('""', '"').trim(),
+          quantity: parseInt(match[3], 10) || 0
+        };
+      }
+    });
+    renderInventory();
+  };
+  readerFile.readAsText(file);
+}
+
+renderInventory();
+startCameraAlwaysOn();
+</script>
+</body>
+</html>
