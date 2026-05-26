@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Inventory Scanner</title>
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <style>
+    :root{--bg:#0f172a;--card:#111827;--soft:#1f2937;--text:#f8fafc;--muted:#94a3b8;--accent:#38bdf8;--good:#22c55e;--warn:#f59e0b;--danger:#ef4444;--border:rgba(255,255,255,.12)}
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:radial-gradient(circle at top,#1e293b,var(--bg));color:var(--text);min-height:100vh;padding:14px;padding-bottom:calc(90px + env(safe-area-inset-bottom))}.app{max-width:1100px;margin:0 auto}.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}h1{font-size:1.55rem;margin:0}.hint,.muted{color:var(--muted);font-size:.88rem;line-height:1.35}.pill{border:1px solid rgba(34,197,94,.35);color:var(--good);border-radius:999px;padding:7px 10px;font-size:.78rem;white-space:nowrap}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}@media(max-width:850px){.grid{grid-template-columns:1fr}}.card{background:rgba(17,24,39,.9);border:1px solid var(--border);border-radius:22px;padding:14px;box-shadow:0 16px 45px rgba(0,0,0,.24);backdrop-filter:blur(10px)}.camera{position:relative;overflow:hidden;border-radius:18px;background:#000;border:1px solid var(--border)}video{display:block;width:100%;min-height:285px;max-height:520px;object-fit:cover}.reticle{position:absolute;inset:18%;border:2px solid rgba(56,189,248,.8);border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.22)}.reticle:after{content:"";position:absolute;left:8%;right:8%;top:50%;height:2px;background:var(--accent);box-shadow:0 0 18px var(--accent)}.status{min-height:24px;margin:10px 2px;color:var(--muted);font-size:.92rem}.status.good{color:var(--good)}.status.warn{color:var(--warn)}button,.fileButton{border:0;border-radius:16px;padding:13px 14px;font-weight:800;font-size:1rem;color:#04111f;background:linear-gradient(135deg,#7dd3fc,#38bdf8);width:100%;cursor:pointer;box-shadow:0 10px 22px rgba(56,189,248,.22)}button.secondary,.fileButton{background:var(--soft);color:var(--text);box-shadow:none;border:1px solid var(--border)}button.danger{background:rgba(239,68,68,.14);color:#fecaca;border:1px solid rgba(239,68,68,.35);box-shadow:none}button.good{background:rgba(34,197,94,.18);color:#bbf7d0;border:1px solid rgba(34,197,94,.38);box-shadow:none}.scanButton{font-size:1.15rem;padding:16px}.scanButton.armed{background:linear-gradient(135deg,#86efac,#22c55e)}.modeRow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.mode{font-size:.88rem;padding:10px}.mode.active{outline:2px solid var(--accent)}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}@media(max-width:560px){.row,.row3,.modeRow{grid-template-columns:1fr}}label{display:block;margin:10px 0 6px;color:var(--muted);font-size:.82rem}input,select,textarea{width:100%;padding:12px;border-radius:14px;border:1px solid var(--border);background:rgba(15,23,42,.78);color:var(--text);font-size:1rem}textarea{min-height:70px;resize:vertical}input[type=file]{display:none}.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}@media(max-width:680px){.actions{grid-template-columns:1fr}}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}@media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr)}}.stat{background:rgba(31,41,55,.55);border:1px solid var(--border);border-radius:18px;padding:12px}.stat strong{display:block;font-size:1.35rem}.toolbar{display:grid;grid-template-columns:1.2fr .7fr .7fr;gap:10px}@media(max-width:760px){.toolbar{grid-template-columns:1fr}}.inventoryHeader{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:15px 0 8px}.item{display:grid;grid-template-columns:58px 1fr auto;gap:10px;align-items:center;border:1px solid var(--border);background:rgba(31,41,55,.55);padding:10px;border-radius:16px;margin-bottom:8px}.thumb{width:58px;height:58px;border-radius:13px;object-fit:cover;background:#0b1220;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.72rem}.itemName{font-weight:800}.itemMeta{color:var(--muted);font-size:.82rem;margin-top:3px;word-break:break-word}.qty{font-size:1.25rem;font-weight:900;text-align:right}.low{color:#fbbf24}.miniActions{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}.miniActions button{padding:7px 10px;font-size:.82rem;border-radius:10px;width:auto}.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#020617;border:1px solid var(--border);color:var(--text);padding:12px 16px;border-radius:999px;box-shadow:0 12px 35px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .22s,bottom .22s;z-index:30;max-width:92%;text-align:center}.toast.show{opacity:1;bottom:calc(34px + env(safe-area-inset-bottom))}.bottomBar{position:fixed;left:0;right:0;bottom:0;background:rgba(2,6,23,.86);backdrop-filter:blur(12px);border-top:1px solid var(--border);padding:10px 14px calc(10px + env(safe-area-inset-bottom));z-index:20}.bottomInner{max-width:680px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px}.hidden{display:none!important}a{color:#7dd3fc}.dangerText{color:#fecaca}.sectionTitle{margin:0 0 6px;font-size:1.08rem}
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><div><h1>Inventory Scanner</h1><div class="hint">Always-on camera, one-tap scans, lookup, CSV import/export, and local device storage.</div></div><div id="cameraPill" class="pill">Camera loading</div></div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="camera"><video id="video" muted playsinline></video><div class="reticle"></div></div>
+      <div id="scanStatus" class="status">Camera starts automatically. Tap Scan Barcode when ready.</div>
+      <button id="scanButton" class="scanButton">Scan Barcode</button>
+      <div class="modeRow">
+        <button id="modeAdd" class="mode secondary active" onclick="setScanMode('add')">Add +1</button>
+        <button id="modeRemove" class="mode secondary" onclick="setScanMode('remove')">Remove -1</button>
+        <button id="modeCount" class="mode secondary" onclick="setScanMode('count')">Count/Edit</button>
+      </div>
+      <p class="hint">Tip: use Add mode while receiving inventory and Remove mode while using/selling inventory.</p>
+    </section>
+
+    <section class="card">
+      <h2 class="sectionTitle">Item Details</h2>
+      <div class="row"><div><label>Barcode</label><input id="barcode" placeholder="Scan or type barcode"></div><div><label>Quantity</label><input id="quantity" type="number" min="0" value="1"></div></div>
+      <label>Item name</label><input id="name" placeholder="Auto-filled when available">
+      <div class="row"><div><label>Brand</label><input id="brand" placeholder="Brand"></div><div><label>Category</label><input id="category" placeholder="Category"></div></div>
+      <div class="row"><div><label>Location</label><input id="location" placeholder="Shelf, truck, shop, bin"></div><div><label>Low-stock alert</label><input id="minQty" type="number" min="0" value="0"></div></div>
+      <label>Image URL</label><input id="image" placeholder="Optional product image URL">
+      <label>Notes</label><textarea id="notes" placeholder="Size, supplier, reorder notes, etc."></textarea>
+      <div class="actions"><button onclick="saveItem()">Save Item</button><button class="secondary" onclick="lookupCurrentBarcode()">Lookup</button><button class="secondary" onclick="clearForm()">Clear</button></div>
+      <p class="hint">Lookup uses public product data where available. Unknown barcodes can still be saved manually.</p>
+    </section>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span class="muted">Items</span><strong id="statItems">0</strong></div>
+    <div class="stat"><span class="muted">Total Qty</span><strong id="statQty">0</strong></div>
+    <div class="stat"><span class="muted">Low Stock</span><strong id="statLow">0</strong></div>
+    <div class="stat"><span class="muted">Last Scan</span><strong id="statLast">—</strong></div>
+  </div>
+
+  <section class="card">
+    <div class="toolbar">
+      <div><label>Search</label><input id="search" placeholder="Name, barcode, brand, category, location" oninput="renderInventory()"></div>
+      <div><label>Filter</label><select id="filter" onchange="renderInventory()"><option value="all">All items</option><option value="low">Low stock only</option><option value="zero">Zero quantity</option></select></div>
+      <div><label>Sort</label><select id="sort" onchange="renderInventory()"><option value="name">Name</option><option value="qtyAsc">Qty low-high</option><option value="qtyDesc">Qty high-low</option><option value="recent">Recently updated</option></select></div>
+    </div>
+    <div class="actions">
+      <button class="secondary" onclick="exportCSV()">Export CSV</button>
+      <label class="fileButton" for="csvFile">Import CSV</label><input id="csvFile" type="file" accept=".csv,text/csv" onchange="importCSV(event)">
+      <button class="secondary" onclick="exportJSON()">Backup JSON</button>
+    </div>
+    <div class="actions">
+      <label class="fileButton" for="jsonFile">Restore JSON</label><input id="jsonFile" type="file" accept=".json,application/json" onchange="importJSON(event)">
+      <button class="secondary" onclick="undoLast()">Undo Last Scan</button>
+      <button class="danger" onclick="clearAllInventory()">Clear All</button>
+    </div>
+    <div class="inventoryHeader"><h2 class="sectionTitle">Inventory</h2><div id="count" class="muted"></div></div>
+    <div id="inventoryList"></div>
+  </section>
+</div>
+
+<div class="bottomBar"><div class="bottomInner"><button onclick="armScanner()">Scan Barcode</button><button class="secondary" onclick="manualEntry()">Manual Entry</button></div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+const STORE_KEY='inventory_scanner_v5';
+let inventory=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
+let reader=null, armed=false, lastCode='', lastTime=0, scanMode='add', lastAction=null, audioCtx=null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const fields=['barcode','name','quantity','brand','category','location','minQty','image','notes'];
+function saveStore(){localStorage.setItem(STORE_KEY,JSON.stringify(inventory));}
+function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),1700)}
+function vibrate(p=[60]){try{if(navigator.vibrate)navigator.vibrate(p)}catch(e){}}
+function beep(){try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.frequency.value=880;g.gain.value=.045;o.start();setTimeout(()=>o.stop(),90)}catch(e){}}
+function notify(msg){vibrate([45,30,45]);beep();toast(msg)}
+function setStatus(msg,cls=''){$('scanStatus').textContent=msg;$('scanStatus').className='status '+cls}
+function setScanMode(mode){scanMode=mode;['Add','Remove','Count'].forEach(m=>$('mode'+m).classList.remove('active'));$('mode'+mode[0].toUpperCase()+mode.slice(1)).classList.add('active');toast('Scan mode: '+(mode==='add'?'Add +1':mode==='remove'?'Remove -1':'Count/Edit'))}
+async function startCamera(){try{reader=new ZXingBrowser.BrowserMultiFormatReader();await reader.decodeFromVideoDevice(null,'video',async(result)=>{if(!result||!armed)return;const code=result.getText();const now=Date.now();if(code===lastCode&&now-lastTime<1700)return;lastCode=code;lastTime=now;armed=false;$('scanButton').classList.remove('armed');$('scanButton').textContent='Scan Barcode';await handleScan(code);});$('cameraPill').textContent='Camera active';setStatus('Camera active. Tap Scan Barcode to capture one barcode.')}catch(e){$('cameraPill').textContent='Camera unavailable';setStatus('Camera could not start. Confirm HTTPS and camera permission in Safari/Chrome.','warn')}}
+function armScanner(){armed=true;$('scanButton').classList.add('armed');$('scanButton').textContent='Ready — Aim at Barcode';setStatus('Ready — point the camera at one barcode.','good');vibrate([25])}
+$('scanButton').addEventListener('click',armScanner);
+async function handleScan(code){$('barcode').value=code;$('statLast').textContent=code.slice(-6);let item=inventory[code];let before=item?Number(item.quantity||0):0;if(item){if(scanMode==='add')item.quantity=before+1;else if(scanMode==='remove')item.quantity=Math.max(0,before-1);item.updatedAt=new Date().toISOString();fillForm(code);lastAction={code,before,after:item.quantity};saveStore();renderInventory();notify(`${item.name||'Item'} ${scanMode==='remove'?'-1':scanMode==='add'?'+1':'loaded'}`);setStatus(`Scanned ${code}. ${scanMode==='count'?'Loaded item for editing.':'Quantity updated.'}`,'good')}else{clearForm(false);$('barcode').value=code;$('quantity').value=scanMode==='remove'?0:1;setStatus('New barcode scanned. Looking up details...','good');notify('Barcode scanned');await lookupCurrentBarcode(true)}}
+async function lookupCurrentBarcode(silent=false){const code=$('barcode').value.trim();if(!code){toast('Enter or scan a barcode first');return}try{setStatus('Looking up barcode...');const url=`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,categories,image_front_small_url,image_url,quantity`;const res=await fetch(url);const data=await res.json();if(data&&data.status===1&&data.product){const p=data.product;if(!$('name').value)$('name').value=p.product_name||p.quantity||'';if(!$('brand').value)$('brand').value=p.brands||'';if(!$('category').value)$('category').value=(p.categories||'').split(',').slice(0,2).join(', ');if(!$('image').value)$('image').value=p.image_front_small_url||p.image_url||'';setStatus('Product details found. Review and save.','good');if(!silent)toast('Details found')}else{setStatus('No public match found. Enter details manually, or use Web Search.','warn');if(!silent)toast('No lookup match')}}catch(e){setStatus('Lookup unavailable right now. You can still save manually.','warn')}}
+function itemFromForm(){return{barcode:$('barcode').value.trim(),name:$('name').value.trim(),quantity:Math.max(0,Number($('quantity').value||0)),brand:$('brand').value.trim(),category:$('category').value.trim(),location:$('location').value.trim(),minQty:Math.max(0,Number($('minQty').value||0)),image:$('image').value.trim(),notes:$('notes').value.trim(),updatedAt:new Date().toISOString()}}
+function saveItem(){const it=itemFromForm();if(!it.barcode||!it.name){alert('Please enter a barcode and item name.');return}inventory[it.barcode]=it;saveStore();renderInventory();notify('Item saved');clearForm(false);setStatus('Saved. Tap Scan Barcode for the next item.','good')}
+function fillForm(code){const it=inventory[code];if(!it)return;fields.forEach(f=>{if($(f))$(f).value=(f==='quantity'||f==='minQty')?Number(it[f]||0):(it[f]||'')})}
+function clearForm(clearCode=true){fields.forEach(f=>{if(!$(f))return;$(f).value=(f==='quantity')?1:(f==='minQty'?0:'')});if(!clearCode)$('barcode').value=$('barcode').value}
+function manualEntry(){clearForm();$('barcode').focus();window.scrollTo({top:0,behavior:'smooth'})}
+function renderInventory(){let arr=Object.values(inventory);const q=$('search').value.toLowerCase().trim();if(q)arr=arr.filter(i=>[i.barcode,i.name,i.brand,i.category,i.location,i.notes].join(' ').toLowerCase().includes(q));const filter=$('filter').value;if(filter==='low')arr=arr.filter(i=>Number(i.minQty)>0&&Number(i.quantity)<=Number(i.minQty));if(filter==='zero')arr=arr.filter(i=>Number(i.quantity)<=0);const sort=$('sort').value;arr.sort((a,b)=>sort==='qtyAsc'?a.quantity-b.quantity:sort==='qtyDesc'?b.quantity-a.quantity:sort==='recent'?String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')):String(a.name||'').localeCompare(String(b.name||'')));$('inventoryList').innerHTML=arr.length?arr.map(i=>card(i)).join(''):'<p class="muted">No inventory items yet.</p>';$('count').textContent=`${arr.length} shown`;updateStats();saveStore()}
+function card(i){const low=Number(i.minQty)>0&&Number(i.quantity)<=Number(i.minQty);return `<div class="item"><div>${i.image?`<img class="thumb" src="${esc(i.image)}" onerror="this.outerHTML='<div class=&quot;thumb&quot;>No img</div>'">`:'<div class="thumb">No img</div>'}</div><div><div class="itemName ${low?'low':''}">${esc(i.name||'Unnamed')}</div><div class="itemMeta">${esc(i.barcode)}${i.brand?' • '+esc(i.brand):''}${i.category?' • '+esc(i.category):''}${i.location?' • '+esc(i.location):''}</div>${low?'<div class="itemMeta dangerText">Low stock alert</div>':''}${i.notes?`<div class="itemMeta">${esc(i.notes)}</div>`:''}<div class="miniActions"><button class="secondary" onclick="changeQty('${esc(i.barcode)}',1)">+1</button><button class="secondary" onclick="changeQty('${esc(i.barcode)}',-1)">-1</button><button class="secondary" onclick="editItem('${esc(i.barcode)}')">Edit</button><button class="secondary" onclick="webSearch('${esc(i.barcode)}')">Web</button><button class="danger" onclick="deleteItem('${esc(i.barcode)}')">Delete</button></div></div><div class="qty">${Number(i.quantity||0)}</div></div>`}
+function changeQty(code,delta){const i=inventory[code];if(!i)return;const before=Number(i.quantity||0);i.quantity=Math.max(0,before+delta);i.updatedAt=new Date().toISOString();lastAction={code,before,after:i.quantity};saveStore();renderInventory();notify(delta>0?'+1':'-1')}
+function editItem(code){fillForm(code);window.scrollTo({top:0,behavior:'smooth'})}
+function deleteItem(code){if(confirm('Delete this item?')){delete inventory[code];saveStore();renderInventory();toast('Deleted')}}
+function undoLast(){if(!lastAction){toast('Nothing to undo');return}const i=inventory[lastAction.code];if(i){i.quantity=lastAction.before;i.updatedAt=new Date().toISOString();saveStore();renderInventory();toast('Last scan undone')}lastAction=null}
+function updateStats(){const all=Object.values(inventory);$('statItems').textContent=all.length;$('statQty').textContent=all.reduce((s,i)=>s+Number(i.quantity||0),0);$('statLow').textContent=all.filter(i=>Number(i.minQty)>0&&Number(i.quantity)<=Number(i.minQty)).length}
+function exportCSV(){const headers=['barcode','name','quantity','brand','category','location','minQty','image','notes','updatedAt'];const rows=[headers.join(',')].concat(Object.values(inventory).map(i=>headers.map(h=>csvCell(i[h]??'')).join(',')));download(new Blob([rows.join('\n')],{type:'text/csv'}),'inventory.csv')}
+function csvCell(v){v=String(v).replaceAll('"','""');return /[",\n]/.test(v)?`"${v}"`:v}
+function parseCSV(text){const rows=[];let row=[],cur='',q=false;for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1];if(c==='"'&&q&&n==='"'){cur+='"';i++}else if(c==='"'){q=!q}else if(c===','&&!q){row.push(cur);cur=''}else if((c==='\n'||c==='\r')&&!q){if(c==='\r'&&n==='\n')i++;row.push(cur);if(row.some(x=>x.trim()))rows.push(row);row=[];cur=''}else cur+=c}row.push(cur);if(row.some(x=>x.trim()))rows.push(row);return rows}
+function importCSV(ev){const file=ev.target.files[0];if(!file)return;const r=new FileReader();r.onload=e=>{const rows=parseCSV(e.target.result);const headers=rows.shift().map(h=>h.trim());let added=0;rows.forEach(row=>{const obj={};headers.forEach((h,idx)=>obj[h]=row[idx]||'');const code=(obj.barcode||obj.Barcode||'').trim();if(!code)return;const existing=inventory[code]||{};inventory[code]={...existing,barcode:code,name:obj.name||obj.Name||existing.name||'Unnamed item',quantity:Number(obj.quantity||obj.Qty||existing.quantity||0),brand:obj.brand||existing.brand||'',category:obj.category||existing.category||'',location:obj.location||existing.location||'',minQty:Number(obj.minQty||existing.minQty||0),image:obj.image||existing.image||'',notes:obj.notes||existing.notes||'',updatedAt:new Date().toISOString()};added++});saveStore();renderInventory();toast(`Imported ${added} rows`);ev.target.value=''};r.readAsText(file)}
+function exportJSON(){download(new Blob([JSON.stringify(inventory,null,2)],{type:'application/json'}),'inventory-backup.json')}
+function importJSON(ev){const file=ev.target.files[0];if(!file)return;const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);inventory={...inventory,...data};saveStore();renderInventory();toast('Backup restored')}catch(err){alert('Could not read JSON backup.')}};r.readAsText(file)}
+function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)}
+function webSearch(code){window.open(`https://www.google.com/search?q=${encodeURIComponent(code+' barcode product')}`,'_blank')}
+function clearAllInventory(){if(confirm('Clear ALL inventory on this device? Export a backup first if needed.')){inventory={};saveStore();renderInventory();toast('Inventory cleared')}}
+window.addEventListener('beforeunload',saveStore);renderInventory();startCamera();
+</script>
+</body>
+</html>
