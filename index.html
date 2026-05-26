@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Barcode Inventory</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 16px; max-width: 700px; margin: auto; }
+    video { width: 100%; border: 1px solid #ccc; border-radius: 8px; background: #000; }
+    input, button { padding: 12px; margin: 5px 0; width: 100%; font-size: 16px; box-sizing: border-box; }
+    button { border: 0; border-radius: 8px; cursor: pointer; }
+    .primary { background: #1677ff; color: white; font-weight: bold; }
+    .scan-ready { background: #18a058; color: white; font-weight: bold; }
+    .danger { background: #d03050; color: white; }
+    .status { margin: 10px 0; padding: 10px; border-radius: 8px; background: #f2f2f2; }
+    .success { background: #dff8e6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+  </style>
+</head>
+<body>
+
+<h2>Barcode Inventory Tracker</h2>
+
+<video id="video" playsinline></video>
+
+<div id="status" class="status">Camera is off. Tap “Start Camera”.</div>
+
+<button class="primary" onclick="startScanner()">Start Camera</button>
+<button class="scan-ready" onclick="armNextScan()">Scan Next Barcode</button>
+<button onclick="stopScanner()">Stop Camera</button>
+
+<h3>Item</h3>
+<input id="barcode" placeholder="Barcode">
+<input id="name" placeholder="Item name">
+<input id="quantity" type="number" placeholder="Quantity" value="1">
+<button class="primary" onclick="saveItem()">Save / Update Item</button>
+
+<h3>Inventory</h3>
+<button onclick="exportCSV()">Export CSV</button>
+<input type="file" accept=".csv" onchange="importCSV(event)">
+
+<table>
+  <thead>
+    <tr>
+      <th>Barcode</th>
+      <th>Name</th>
+      <th>Qty</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody id="inventory"></tbody>
+</table>
+
+<script>
+let inventory = JSON.parse(localStorage.getItem("inventory")) || {};
+let scanner;
+let scannerControls;
+let scanArmed = false;
+let lastScannedCode = "";
+let lastScanTime = 0;
+
+function setStatus(message, success = false) {
+  const status = document.getElementById("status");
+  status.textContent = message;
+  status.className = success ? "status success" : "status";
+}
+
+function giveFeedback() {
+  // Haptic feedback on iPhone/Safari when supported.
+  if (navigator.vibrate) {
+    navigator.vibrate([120]);
+  }
+
+  // Backup sound notification for browsers that block or don't support vibration.
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    const oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    oscillator.connect(gain);
+    gain.connect(audioCtx.destination);
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.08;
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.12);
+  } catch (e) {}
+}
+
+function renderInventory() {
+  const tbody = document.getElementById("inventory");
+  tbody.innerHTML = "";
+
+  Object.entries(inventory).forEach(([barcode, item]) => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${barcode}</td>
+        <td>${item.name}</td>
+        <td>${item.quantity}</td>
+        <td><button class="danger" onclick="deleteItem('${barcode}')">Delete</button></td>
+      </tr>
+    `;
+  });
+
+  localStorage.setItem("inventory", JSON.stringify(inventory));
+}
+
+async function startScanner() {
+  if (scannerControls) {
+    setStatus("Camera is already active. Tap “Scan Next Barcode” when ready.");
+    return;
+  }
+
+  scanner = new ZXingBrowser.BrowserMultiFormatReader();
+  setStatus("Starting camera...");
+
+  try {
+    scannerControls = await scanner.decodeFromVideoDevice(null, "video", (result, error) => {
+      if (!result || !scanArmed) return;
+
+      const code = result.getText();
+      const now = Date.now();
+
+      // Prevent duplicate reads caused by the camera seeing the same barcode repeatedly.
+      if (code === lastScannedCode && now - lastScanTime < 2000) return;
+
+      lastScannedCode = code;
+      lastScanTime = now;
+      scanArmed = false;
+
+      document.getElementById("barcode").value = code;
+
+      if (inventory[code]) {
+        document.getElementById("name").value = inventory[code].name;
+        document.getElementById("quantity").value = inventory[code].quantity + 1;
+        setStatus(`Scanned existing item: ${code}. Quantity is ready to increase.`, true);
+      } else {
+        document.getElementById("name").value = "";
+        document.getElementById("quantity").value = 1;
+        setStatus(`Scanned new barcode: ${code}. Enter item name, then save.`, true);
+      }
+
+      giveFeedback();
+    });
+
+    setStatus("Camera active. Tap “Scan Next Barcode” to scan one item.");
+  } catch (err) {
+    setStatus("Camera could not start. Check Safari camera permissions and HTTPS.");
+    alert("Camera could not start. Make sure you opened the app from your GitHub Pages HTTPS link and allowed camera access.");
+  }
+}
+
+function armNextScan() {
+  if (!scannerControls) {
+    setStatus("Start the camera first.");
+    return;
+  }
+
+  scanArmed = true;
+  setStatus("Ready to scan. Point the camera at one barcode.");
+}
+
+function stopScanner() {
+  scanArmed = false;
+
+  if (scannerControls) {
+    scannerControls.stop();
+    scannerControls = null;
+  }
+
+  if (scanner && scanner.reset) {
+    scanner.reset();
+  }
+
+  setStatus("Camera stopped. Tap “Start Camera” to use it again.");
+}
+
+function saveItem() {
+  const barcode = document.getElementById("barcode").value.trim();
+  const name = document.getElementById("name").value.trim();
+  const quantity = parseInt(document.getElementById("quantity").value, 10);
+
+  if (!barcode || !name || isNaN(quantity)) {
+    alert("Please enter barcode, name, and quantity.");
+    return;
+  }
+
+  inventory[barcode] = { name, quantity };
+  renderInventory();
+  setStatus(`Saved item: ${name}`, true);
+
+  document.getElementById("barcode").value = "";
+  document.getElementById("name").value = "";
+  document.getElementById("quantity").value = 1;
+}
+
+function deleteItem(barcode) {
+  delete inventory[barcode];
+  renderInventory();
+  setStatus("Item deleted.");
+}
+
+function exportCSV() {
+  let csv = "barcode,name,quantity\n";
+
+  Object.entries(inventory).forEach(([barcode, item]) => {
+    csv += `${barcode},"${item.name}",${item.quantity}\n`;
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "inventory.csv";
+  link.click();
+}
+
+function importCSV(event) {
+  const file = event.target.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const rows = e.target.result.split("\n").slice(1);
+
+    rows.forEach(row => {
+      const [barcode, name, quantity] = row.split(",");
+      if (barcode && name && quantity) {
+        inventory[barcode.trim()] = {
+          name: name.replaceAll('"', '').trim(),
+          quantity: parseInt(quantity, 10)
+        };
+      }
+    });
+
+    renderInventory();
+    setStatus("CSV imported.", true);
+  };
+
+  reader.readAsText(file);
+}
+
+renderInventory();
+</script>
+
+</body>
+</html>
