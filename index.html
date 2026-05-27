@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>QR Inventory Scanner</title>
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#111827; --card:#1f2937; --muted:#94a3b8; --text:#f8fafc;
+      --accent:#38bdf8; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --border:#334155;
+      --input:#0b1220;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:linear-gradient(180deg,#020617,#0f172a 38%,#111827); color:var(--text);
+    }
+    header{padding:18px 16px 10px; position:sticky; top:0; z-index:4; background:rgba(2,6,23,.92); backdrop-filter:blur(12px); border-bottom:1px solid rgba(148,163,184,.15)}
+    .wrap{max-width:980px;margin:0 auto;padding:0 14px 90px}
+    h1{font-size:1.35rem;margin:0 0 6px;letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:.92rem;margin:0}
+    .grid{display:grid;gap:14px;margin-top:14px}
+    @media(min-width:850px){.grid{grid-template-columns:1.1fr .9fr;align-items:start}}
+    .card{background:rgba(31,41,55,.78); border:1px solid rgba(148,163,184,.18); border-radius:22px; padding:14px; box-shadow:0 16px 40px rgba(0,0,0,.25)}
+    .cameraBox{position:relative;border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--border);min-height:280px}
+    video{width:100%;height:360px;object-fit:cover;display:block;background:#000}
+    .scanFrame{position:absolute;inset:14%;border:3px solid rgba(56,189,248,.92);border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.36);pointer-events:none}
+    .scanFrame.armed{border-color:var(--good);animation:pulse 1s infinite}
+    @keyframes pulse{50%{box-shadow:0 0 0 999px rgba(0,0,0,.28),0 0 22px rgba(34,197,94,.8)}}
+    .status{margin-top:10px;padding:10px 12px;border-radius:14px;background:#0b1220;border:1px solid var(--border);color:#dbeafe;font-size:.95rem;min-height:42px}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .actions.three{grid-template-columns:1fr 1fr 1fr}
+    button, .fileLabel{
+      border:0;border-radius:16px;padding:13px 12px;font-weight:700;font-size:1rem;cursor:pointer;
+      background:#334155;color:white;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center;
+    }
+    button.primary{background:linear-gradient(135deg,#0284c7,#38bdf8);color:#00111d}
+    button.good{background:linear-gradient(135deg,#16a34a,#22c55e);color:#04140a}
+    button.warn{background:linear-gradient(135deg,#d97706,#fbbf24);color:#201100}
+    button.bad{background:linear-gradient(135deg,#dc2626,#fb7185)}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    input,select,textarea{
+      width:100%;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:12px;margin:6px 0 10px;font-size:1rem;
+    }
+    textarea{min-height:70px;resize:vertical}
+    label{font-size:.86rem;color:#cbd5e1;font-weight:700}
+    .formGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .full{grid-column:1/-1}
+    .pillbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+    .pill{padding:7px 10px;border-radius:999px;background:#0b1220;border:1px solid var(--border);color:#cbd5e1;font-size:.84rem}
+    .pill strong{color:white}
+    table{width:100%;border-collapse:collapse;margin-top:10px;overflow:hidden;border-radius:16px}
+    th,td{padding:10px;border-bottom:1px solid rgba(148,163,184,.18);font-size:.9rem;vertical-align:top}
+    th{text-align:left;color:#bae6fd;background:#0b1220;position:sticky;top:70px}
+    tr:hover{background:rgba(15,23,42,.55)}
+    .small{font-size:.82rem;color:var(--muted)}
+    .hidden{display:none!important}
+    .rowActions{display:flex;gap:6px;flex-wrap:wrap}
+    .rowActions button{padding:7px 9px;border-radius:10px;font-size:.8rem}
+    .toast{position:fixed;left:14px;right:14px;bottom:16px;max-width:560px;margin:auto;background:#022c22;border:1px solid #16a34a;color:#dcfce7;padding:13px 14px;border-radius:16px;box-shadow:0 16px 40px rgba(0,0,0,.36);z-index:10}
+    .toolbar{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+    @media(min-width:700px){.toolbar{grid-template-columns:1fr auto auto auto}}
+    input[type=file]{display:none}
+    .empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:16px;margin-top:12px}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding-bottom:0">
+    <h1>QR Inventory Scanner</h1>
+    <p class="sub">Built for your structured inventory QR labels. Scans QR data, updates counts, and exports clean CSV.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="grid">
+    <div class="card">
+      <div class="cameraBox">
+        <video id="video" playsinline muted></video>
+        <div id="scanFrame" class="scanFrame"></div>
+      </div>
+      <div id="status" class="status">Tap <strong>Enable Camera</strong>, then tap <strong>Scan QR</strong> for each label.</div>
+      <div class="actions">
+        <button id="enableCameraBtn" class="primary">Enable Camera</button>
+        <button id="scanBtn" class="good" disabled>Scan QR</button>
+      </div>
+      <div class="actions three">
+        <button id="switchCameraBtn">Switch Camera</button>
+        <button id="undoBtn" class="warn">Undo</button>
+        <button id="clearBtn" class="bad">Clear All</button>
+      </div>
+      <div class="pillbar">
+        <span class="pill">Mode: <strong id="modeLabel">Add</strong></span>
+        <span class="pill">Items: <strong id="itemCount">0</strong></span>
+        <span class="pill">Total Qty: <strong id="totalQty">0</strong></span>
+      </div>
+      <label>Scan Mode</label>
+      <select id="scanMode">
+        <option value="add">Add 1 to On Hand / Quantity</option>
+        <option value="remove">Remove 1 from On Hand / Quantity</option>
+        <option value="count">Set/replace item information only</option>
+      </select>
+      <p class="small">This version is optimized for QR codes containing fields like Item ID, Size, Item Name, Color, Description, Brand, Category, Unit, On Hand, and Total Value.</p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 10px;font-size:1.1rem">Current Item</h2>
+      <div class="formGrid">
+        <div>
+          <label>Item ID</label>
+          <input id="itemId" placeholder="TP500">
+        </div>
+        <div>
+          <label>On Hand</label>
+          <input id="onHand" type="number" step="1" placeholder="0">
+        </div>
+        <div class="full">
+          <label>Item Name</label>
+          <input id="itemName" placeholder="SQUARE BOX COVER">
+        </div>
+        <div>
+          <label>Size</label>
+          <input id="size" placeholder="4">
+        </div>
+        <div>
+          <label>Color</label>
+          <input id="color" placeholder="METAL">
+        </div>
+        <div class="full">
+          <label>Description</label>
+          <input id="description" placeholder="3/4 INCH RAISED">
+        </div>
+        <div>
+          <label>Brand</label>
+          <input id="brand" placeholder="EATON">
+        </div>
+        <div>
+          <label>Category</label>
+          <input id="category" placeholder="Boxes">
+        </div>
+        <div>
+          <label>Unit</label>
+          <input id="unit" placeholder="EA">
+        </div>
+        <div>
+          <label>Total Value / Formula</label>
+          <input id="totalValue" placeholder="=I14*O14">
+        </div>
+        <div class="full">
+          <label>Raw QR Text</label>
+          <textarea id="rawText" placeholder="Scanned QR content appears here"></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="saveBtn" class="primary">Save Item</button>
+        <button id="resetFormBtn">Reset Form</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <h2 style="margin:0 0 10px;font-size:1.1rem">Inventory</h2>
+    <div class="toolbar">
+      <input id="search" placeholder="Search item ID, name, brand, category, description...">
+      <button id="exportCsvBtn" class="good">Export CSV</button>
+      <label class="fileLabel">Import CSV<input id="importCsv" type="file" accept=".csv"></label>
+      <button id="backupBtn">Backup JSON</button>
+      <label class="fileLabel">Restore JSON<input id="restoreJson" type="file" accept=".json"></label>
+    </div>
+    <div id="inventoryTable"></div>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+(() => {
+  const STORAGE_KEY = "qr_inventory_v4";
+  const $ = id => document.getElementById(id);
+  const fields = ["itemId","size","itemName","color","description","brand","category","unit","onHand","totalValue","rawText"];
+  let inventory = loadInventory();
+  let stream = null;
+  let devices = [];
+  let deviceIndex = 0;
+  let armed = false;
+  let busy = false;
+  let detector = null;
+  let zxingReader = null;
+  let zxingControls = null;
+  let lastAction = null;
+  let lastScanAt = 0;
+
+  const video = $("video");
+  const status = $("status");
+  const scanFrame = $("scanFrame");
+
+  function loadInventory(){
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+    catch { return {}; }
+  }
+  function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory)); updateStats(); }
+
+  function setStatus(msg){ status.innerHTML = msg; }
+  function toast(msg, ok=true){
+    const t=$("toast"); t.textContent=msg; t.style.background=ok ? "#022c22" : "#3b0a0a"; t.style.borderColor=ok ? "#16a34a" : "#ef4444";
+    t.classList.remove("hidden"); setTimeout(()=>t.classList.add("hidden"), 2600);
+  }
+  function feedback(){
+    try { if (navigator.vibrate) navigator.vibrate([80,40,80]); } catch {}
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.type = "sine"; osc.frequency.value = 880; gain.gain.value = .045;
+      osc.connect(gain); gain.connect(ctx.destination); osc.start();
+      setTimeout(()=>{osc.stop(); ctx.close();}, 120);
+    } catch {}
+  }
+
+  async function enableCamera(){
+    setStatus("Requesting camera access...");
+    await stopCamera(false);
+    try {
+      devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+      const constraints = buildConstraints();
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+      $("scanBtn").disabled = false;
+      setStatus("Camera ready. Tap <strong>Scan QR</strong> when the QR label is centered.");
+      await setupDetectors();
+    } catch (err) {
+      console.error(err);
+      $("scanBtn").disabled = true;
+      setStatus("Camera failed: " + escapeHtml(err.message || err.name) + "<br><span class='small'>Use HTTPS, allow camera permission, then reload. On Android, try Switch Camera after enabling.</span>");
+    }
+  }
+
+  function buildConstraints(){
+    if (devices.length && devices[deviceIndex]?.deviceId) {
+      return { video: { deviceId: { exact: devices[deviceIndex].deviceId }, width:{ideal:1280}, height:{ideal:720}, focusMode:"continuous" }, audio:false };
+    }
+    return { video: { facingMode: { ideal: "environment" }, width:{ideal:1280}, height:{ideal:720}, focusMode:"continuous" }, audio:false };
+  }
+
+  async function setupDetectors(){
+    if ("BarcodeDetector" in window) {
+      try {
+        const formats = await BarcodeDetector.getSupportedFormats();
+        if (formats.includes("qr_code")) detector = new BarcodeDetector({formats:["qr_code"]});
+      } catch { detector = null; }
+    }
+    if (!detector && window.ZXingBrowser) {
+      try { zxingReader = new ZXingBrowser.BrowserMultiFormatReader(); } catch(e){ console.warn(e); }
+    }
+  }
+
+  async function stopCamera(disable=true){
+    try { if (zxingControls) zxingControls.stop(); } catch {}
+    zxingControls = null;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    if (disable) $("scanBtn").disabled = true;
+  }
+
+  async function switchCamera(){
+    try {
+      const all = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+      devices = all.length ? all : devices;
+      if (devices.length > 1) deviceIndex = (deviceIndex + 1) % devices.length;
+      await enableCamera();
+    } catch(e){ toast("Could not switch camera.", false); }
+  }
+
+  async function scanOnce(){
+    if (!stream) return enableCamera();
+    if (busy) return;
+    busy = true; armed = true; scanFrame.classList.add("armed");
+    setStatus("Scanning... hold the QR label inside the blue box.");
+    $("scanBtn").disabled = true;
+    const timeoutMs = 9000;
+    const started = Date.now();
+
+    try {
+      let result = null;
+      while(Date.now() - started < timeoutMs && !result){
+        if (detector) {
+          const codes = await detector.detect(video);
+          if (codes && codes.length) result = codes[0].rawValue;
+        } else if (zxingReader) {
+          result = await scanWithZXingFrame();
+        }
+        if (!result) await wait(160);
+      }
+      if (!result) throw new Error("No QR code detected. Move closer, improve lighting, or tap Switch Camera.");
+      handleScan(result);
+    } catch(err) {
+      console.warn(err);
+      setStatus(escapeHtml(err.message || "Scan failed."));
+      toast("Scan failed. Try again.", false);
+    } finally {
+      busy = false; armed = false; scanFrame.classList.remove("armed");
+      $("scanBtn").disabled = false;
+    }
+  }
+
+  async function scanWithZXingFrame(){
+    // Prefer decoding from the live video element/canvas for one-shot manual scans.
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const img = canvas.toDataURL("image/png");
+      const res = await zxingReader.decodeFromImageUrl(img);
+      return res?.getText ? res.getText() : (res?.text || null);
+    } catch { return null; }
+  }
+
+  function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  function handleScan(raw){
+    const now = Date.now();
+    if (raw === $("rawText").value && now - lastScanAt < 1200) return;
+    lastScanAt = now;
+    const parsed = parseQR(raw);
+    fillForm(parsed);
+    const id = parsed.itemId || makeFallbackId(raw);
+    parsed.itemId = id;
+    const mode = $("scanMode").value;
+    const existing = inventory[id];
+    lastAction = { id, before: existing ? {...existing} : null };
+    let item = existing ? {...existing, ...cleanParsed(parsed)} : cleanParsed(parsed);
+    item.itemId = id;
+    const parsedQty = toNumber(parsed.onHand);
+    if (mode === "add") item.onHand = existing ? toNumber(existing.onHand) + 1 : (Number.isFinite(parsedQty) ? parsedQty : 1);
+    if (mode === "remove") item.onHand = Math.max(0, existing ? toNumber(existing.onHand) - 1 : Math.max(0, (Number.isFinite(parsedQty) ? parsedQty : 0) - 1));
+    if (mode === "count") item.onHand = Number.isFinite(parsedQty) ? parsedQty : toNumber(item.onHand);
+    item.rawText = raw;
+    item.lastScanned = new Date().toISOString();
+    item.scanCount = (existing?.scanCount || 0) + 1;
+    inventory[id] = item;
+    persist(); renderInventory(); fillForm(item); feedback();
+    const verb = mode === "remove" ? "Removed 1" : mode === "count" ? "Updated" : "Added/scanned";
+    setStatus(`<strong>✓ ${verb}</strong>: ${escapeHtml(id)} — ${escapeHtml(item.itemName || "Unnamed item")}`);
+    toast(`${verb}: ${id}`);
+  }
+
+  function parseQR(raw){
+    const obj = { rawText: raw };
+    raw.split(/\r?\n/).forEach(line => {
+      const idx = line.indexOf(":");
+      if (idx < 0) return;
+      const key = line.slice(0, idx).trim().toLowerCase().replace(/\s+/g," ");
+      const val = line.slice(idx+1).trim();
+      const map = {
+        "item id":"itemId", "size":"size", "item name":"itemName", "color":"color",
+        "description":"description", "brand":"brand", "category":"category", "unit":"unit",
+        "on hand":"onHand", "total value":"totalValue"
+      };
+      if (map[key]) obj[map[key]] = val;
+    });
+    return obj;
+  }
+  function cleanParsed(obj){
+    const out = {};
+    fields.forEach(f => { if (obj[f] !== undefined && obj[f] !== "") out[f] = obj[f]; });
+    return out;
+  }
+  function makeFallbackId(raw){ return "QR-" + hash(raw).toString(36).toUpperCase(); }
+  function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=((h<<5)-h)+s.charCodeAt(i)|0; return Math.abs(h); }
+  function toNumber(v){ const n = parseInt(String(v ?? "0").replace(/[^\d-]/g,""),10); return Number.isFinite(n) ? n : 0; }
+
+  function fillForm(item){
+    fields.forEach(f => { $(f).value = item[f] ?? ""; });
+  }
+  function readForm(){
+    const item={};
+    fields.forEach(f => item[f] = $(f).value.trim());
+    item.onHand = toNumber(item.onHand);
+    item.lastScanned = item.lastScanned || new Date().toISOString();
+    item.scanCount = item.scanCount || 0;
+    return item;
+  }
+  function resetForm(){ fields.forEach(f => $(f).value=""); }
+
+  function saveForm(){
+    const item = readForm();
+    if (!item.itemId) { toast("Item ID is required.", false); return; }
+    lastAction = { id:item.itemId, before: inventory[item.itemId] ? {...inventory[item.itemId]} : null };
+    inventory[item.itemId] = {...(inventory[item.itemId]||{}), ...item};
+    persist(); renderInventory(); toast("Item saved.");
+  }
+
+  function undo(){
+    if (!lastAction) return toast("Nothing to undo.", false);
+    if (lastAction.before) inventory[lastAction.id] = lastAction.before;
+    else delete inventory[lastAction.id];
+    persist(); renderInventory(); toast("Last action undone.");
+    lastAction = null;
+  }
+
+  function clearAll(){
+    if (!confirm("Clear all inventory stored on this device?")) return;
+    inventory = {}; persist(); renderInventory(); resetForm(); toast("Inventory cleared.");
+  }
+
+  function updateStats(){
+    const items = Object.values(inventory);
+    $("itemCount").textContent = items.length;
+    $("totalQty").textContent = items.reduce((sum,i)=>sum + toNumber(i.onHand), 0);
+    $("modeLabel").textContent = $("scanMode").selectedOptions[0].textContent.split(" ")[0];
+  }
+
+  function renderInventory(){
+    const q = $("search").value.trim().toLowerCase();
+    const rows = Object.values(inventory).sort((a,b)=>(a.itemId||"").localeCompare(b.itemId||""))
+      .filter(i => !q || JSON.stringify(i).toLowerCase().includes(q));
+    if (!rows.length) {
+      $("inventoryTable").innerHTML = `<div class="empty">No matching inventory items yet.</div>`;
+      return;
+    }
+    $("inventoryTable").innerHTML = `
+      <table>
+        <thead><tr><th>Item ID</th><th>Item</th><th>Details</th><th>On Hand</th><th>Actions</th></tr></thead>
+        <tbody>
+        ${rows.map(i=>`
+          <tr>
+            <td><strong>${escapeHtml(i.itemId||"")}</strong><br><span class="small">${escapeHtml(i.category||"")}</span></td>
+            <td>${escapeHtml(i.itemName||"")}<br><span class="small">${escapeHtml(i.brand||"")}</span></td>
+            <td>${escapeHtml([i.size, i.color, i.description].filter(Boolean).join(" • "))}<br><span class="small">${escapeHtml(i.unit||"")} ${escapeHtml(i.totalValue||"")}</span></td>
+            <td><strong>${escapeHtml(String(i.onHand ?? ""))}</strong><br><span class="small">Scans: ${escapeHtml(String(i.scanCount||0))}</span></td>
+            <td><div class="rowActions"><button data-edit="${escapeAttr(i.itemId)}">Edit</button><button data-plus="${escapeAttr(i.itemId)}">+1</button><button data-minus="${escapeAttr(i.itemId)}">-1</button><button data-delete="${escapeAttr(i.itemId)}" class="bad">Delete</button></div></td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`;
+  }
+
+  function exportCSV(){
+    const headers = ["Item ID","Size","Item Name","Color","Description","Brand","Category","Unit","On Hand","Total Value","Last Scanned","Scan Count","Raw QR Text"];
+    const map = ["itemId","size","itemName","color","description","brand","category","unit","onHand","totalValue","lastScanned","scanCount","rawText"];
+    const lines = [headers.join(",")];
+    Object.values(inventory).sort((a,b)=>(a.itemId||"").localeCompare(b.itemId||"")).forEach(item=>{
+      lines.push(map.map(k=>csvCell(item[k] ?? "")).join(","));
+    });
+    download("inventory_export.csv", lines.join("\n"), "text/csv");
+  }
+  function csvCell(v){ return `"${String(v).replaceAll('"','""')}"`; }
+
+  function importCSV(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCSV(reader.result);
+      if (!rows.length) return toast("CSV had no rows.", false);
+      const headers = rows.shift().map(h => h.trim().toLowerCase());
+      const index = name => headers.indexOf(name.toLowerCase());
+      let count=0;
+      rows.forEach(r => {
+        const item = {
+          itemId: r[index("Item ID")] || r[index("itemId")] || "",
+          size: r[index("Size")] || "",
+          itemName: r[index("Item Name")] || "",
+          color: r[index("Color")] || "",
+          description: r[index("Description")] || "",
+          brand: r[index("Brand")] || "",
+          category: r[index("Category")] || "",
+          unit: r[index("Unit")] || "",
+          onHand: toNumber(r[index("On Hand")]),
+          totalValue: r[index("Total Value")] || "",
+          lastScanned: r[index("Last Scanned")] || "",
+          scanCount: toNumber(r[index("Scan Count")]),
+          rawText: r[index("Raw QR Text")] || ""
+        };
+        if (!item.itemId) return;
+        inventory[item.itemId] = {...(inventory[item.itemId]||{}), ...item};
+        count++;
+      });
+      persist(); renderInventory(); toast(`Imported ${count} item(s).`);
+    };
+    reader.readAsText(file);
+  }
+
+  function parseCSV(text){
+    const rows=[]; let row=[], cell="", quote=false;
+    for(let i=0;i<text.length;i++){
+      const c=text[i], n=text[i+1];
+      if(c === '"' && quote && n === '"'){ cell+='"'; i++; }
+      else if(c === '"'){ quote=!quote; }
+      else if(c === "," && !quote){ row.push(cell); cell=""; }
+      else if((c === "\n" || c === "\r") && !quote){ if(c === "\r" && n === "\n") i++; row.push(cell); if(row.some(x=>x.trim()!=="")) rows.push(row); row=[]; cell=""; }
+      else cell += c;
+    }
+    row.push(cell); if(row.some(x=>x.trim()!=="")) rows.push(row);
+    return rows;
+  }
+
+  function backup(){ download("inventory_backup.json", JSON.stringify(inventory,null,2), "application/json"); }
+  function restore(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        inventory = data && typeof data === "object" ? data : {};
+        persist(); renderInventory(); toast("Backup restored.");
+      } catch { toast("Invalid JSON backup.", false); }
+    };
+    reader.readAsText(file);
+  }
+  function download(name, content, type){
+    const blob = new Blob([content], {type});
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+  function escapeAttr(s){ return escapeHtml(s).replaceAll('"','&quot;'); }
+
+  document.addEventListener("click", e => {
+    const t=e.target;
+    if (t.dataset.edit) fillForm(inventory[t.dataset.edit]);
+    if (t.dataset.plus) { lastAction={id:t.dataset.plus,before:{...inventory[t.dataset.plus]}}; inventory[t.dataset.plus].onHand=toNumber(inventory[t.dataset.plus].onHand)+1; persist(); renderInventory(); }
+    if (t.dataset.minus) { lastAction={id:t.dataset.minus,before:{...inventory[t.dataset.minus]}}; inventory[t.dataset.minus].onHand=Math.max(0,toNumber(inventory[t.dataset.minus].onHand)-1); persist(); renderInventory(); }
+    if (t.dataset.delete) { lastAction={id:t.dataset.delete,before:{...inventory[t.dataset.delete]}}; delete inventory[t.dataset.delete]; persist(); renderInventory(); }
+  });
+
+  $("enableCameraBtn").addEventListener("click", enableCamera);
+  $("scanBtn").addEventListener("click", scanOnce);
+  $("switchCameraBtn").addEventListener("click", switchCamera);
+  $("undoBtn").addEventListener("click", undo);
+  $("clearBtn").addEventListener("click", clearAll);
+  $("saveBtn").addEventListener("click", saveForm);
+  $("resetFormBtn").addEventListener("click", resetForm);
+  $("exportCsvBtn").addEventListener("click", exportCSV);
+  $("backupBtn").addEventListener("click", backup);
+  $("search").addEventListener("input", renderInventory);
+  $("scanMode").addEventListener("change", updateStats);
+  $("importCsv").addEventListener("change", e => e.target.files[0] && importCSV(e.target.files[0]));
+  $("restoreJson").addEventListener("change", e => e.target.files[0] && restore(e.target.files[0]));
+  window.addEventListener("beforeunload", () => stopCamera(false));
+
+  renderInventory(); updateStats();
+})();
+</script>
+</body>
+</html>
